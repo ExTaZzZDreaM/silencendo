@@ -27,7 +27,7 @@ async function main() {
     }
   }
 
-  console.log("Silence AI started. All MCP servers ready.")
+  console.log("S-CODE started. All MCP servers ready.")
 }
 
 main().catch((err) => {
