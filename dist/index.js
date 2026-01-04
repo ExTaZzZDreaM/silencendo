@@ -1,6 +1,8 @@
 import { MCPProcessManager } from "./mcp/manager/processManager.js";
 import { initializeMCP } from "./mcp/manager/mcpConnection.js";
+import { loadConfig } from "./config/mcp-config.js";
 const manager = new MCPProcessManager();
+const config = loadConfig();
 async function main() {
     const servers = [
         {
@@ -12,6 +14,15 @@ async function main() {
             name: "terminal",
             command: "node",
             args: ["./dist/mcp/servers/terminal/index.js"]
+        },
+        {
+            name: "docs",
+            command: "node",
+            args: ["./dist/mcp/servers/docs/index.js"],
+            env: {
+                DOCS_RATE_LIMIT_REQUESTS_PER_MINUTE: config.docs?.rate_limits?.duckduckgo?.requests_per_minute?.toString() ||
+                    "30"
+            }
         }
     ];
     for (const srv of servers) {

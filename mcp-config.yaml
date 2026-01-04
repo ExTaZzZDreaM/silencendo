@@ -1,0 +1,5 @@
+docs:
+  rate_limits:
+    duckduckgo:
+      requests_per_minute: 30
+
