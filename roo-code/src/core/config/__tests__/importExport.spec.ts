@@ -1785,7 +1785,7 @@ describe("importExport", () => {
 				// Verify that token fields were excluded because reasoning budget is not supported/required
 				const provider = exportedData.providerProfiles.apiConfigs[providerName]
 				expect(provider).toBeDefined()
-				expect(provider.apiModelId).toBe(modelId)
+				expect(provider.apiProvider).toBe("ollama")
 				expect("modelMaxTokens" in provider).toBe(false) // Should be excluded
 				expect("modelMaxThinkingTokens" in provider).toBe(false) // Should be excluded
 			},

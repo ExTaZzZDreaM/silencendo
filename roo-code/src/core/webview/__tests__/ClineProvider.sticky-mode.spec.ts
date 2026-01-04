@@ -728,7 +728,7 @@ describe("ClineProvider - Sticky Mode", () => {
 
 			// Verify that the API configuration was also restored
 			expect(state.currentApiConfigName).toBe("architect-config")
-			expect(state.apiConfiguration.apiProvider).toBe("openai")
+			expect(state.apiConfiguration.apiProvider).toBe("ollama")
 		})
 
 		it("should handle mode deletion between sessions", async () => {

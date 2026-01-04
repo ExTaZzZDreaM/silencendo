@@ -335,6 +335,15 @@ export class ContextProxy {
 			const { apiProvider, ...restValues } = sanitizedValues
 			return restValues as RooCodeSettings
 		}
+
+		// Hard-lock to Ollama: if anything else is set, force it back to Ollama.
+		if (values.apiProvider !== undefined && values.apiProvider !== "ollama") {
+			logger.info(
+				`[ContextProxy] Forcing provider to "ollama" instead of "${values.apiProvider}" to comply with policy`,
+			)
+			return { ...sanitizedValues, apiProvider: "ollama" } as RooCodeSettings
+		}
+
 		return sanitizedValues
 	}
 

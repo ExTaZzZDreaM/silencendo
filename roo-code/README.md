@@ -9,7 +9,6 @@ This folder contains a **rebranded** copy of the upstream Roo Code project (labe
 - VS Code extension: `src/`
 - Webview UI: `webview-ui/`
 - Web apps:
-  - Marketing site: `apps/web-roo-code/`
   - Evals UI: `apps/web-evals/`
   - Nightly packaging: `apps/vscode-nightly/`
 
@@ -18,7 +17,6 @@ This folder contains a **rebranded** copy of the upstream Roo Code project (labe
 - Source images in the parent repo root: `../logoW.png` and `../logoB.png`
 - Generated/used icons:
   - Extension icons: `src/assets/icons/`
-  - Website icons/logos: `apps/web-roo-code/public/`
 
 ## Development
 
@@ -41,12 +39,7 @@ cd roo-code
 npx -y pnpm@10.8.1 --filter ./src test
 ```
 
-Run the website:
-
-```sh
-cd roo-code
-npx -y pnpm@10.8.1 --filter @roo-code/web-roo-code dev
-```
+Marketing site removed; only extension and evals remain.
 
 ## Notes
 

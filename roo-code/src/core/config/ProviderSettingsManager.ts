@@ -672,6 +672,14 @@ export class ProviderSettingsManager {
 			return restConfig
 		}
 
+		// Hard-lock to Ollama by rewriting any other provider selection
+		if (config.apiProvider !== undefined && config.apiProvider !== "ollama") {
+			console.log(
+				`[ProviderSettingsManager] Forcing provider to "ollama" instead of "${config.apiProvider}" to comply with policy`,
+			)
+			return { ...config, apiProvider: "ollama" }
+		}
+
 		return apiConfig
 	}
 
@@ -762,12 +770,15 @@ export class ProviderSettingsManager {
 						const isActiveProfile = existingName === currentActiveProfileName
 
 						// Merge settings, preserving secret keys
-						const updatedProfile: ProviderSettingsWithId = { ...cloudProfile }
+						let updatedProfile: ProviderSettingsWithId = { ...cloudProfile }
 						for (const [key, value] of Object.entries(existingProfile)) {
 							if (isSecretStateKey(key) && value !== undefined) {
 								;(updatedProfile as any)[key] = value
 							}
 						}
+
+						// Sanitize (force allowed providers) before comparing/storing
+						updatedProfile = this.sanitizeProviderConfig(updatedProfile) as ProviderSettingsWithId
 
 						// Check if the profile actually changed using deepEqual
 						const profileChanged = !deepEqual(existingProfile, updatedProfile)
@@ -839,13 +850,16 @@ export class ProviderSettingsManager {
 						}
 
 						// Add the new cloud profile (without secret keys)
-						const newProfile: ProviderSettingsWithId = { ...cloudProfile }
+						let newProfile: ProviderSettingsWithId = { ...cloudProfile }
 						// Remove any secret keys from cloud profile
 						for (const key of Object.keys(newProfile)) {
 							if (isSecretStateKey(key)) {
 								delete (newProfile as any)[key]
 							}
 						}
+
+						// Sanitize (force allowed providers) before storing
+						newProfile = this.sanitizeProviderConfig(newProfile) as ProviderSettingsWithId
 
 						providerProfiles.apiConfigs[finalName] = newProfile
 						existingNames.add(finalName)

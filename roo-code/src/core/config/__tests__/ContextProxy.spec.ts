@@ -447,12 +447,12 @@ describe("ContextProxy", () => {
 			expect(mockGlobalState.update).toHaveBeenCalledWith("apiProvider", undefined)
 		})
 
-		it("should not modify valid apiProvider during initialization", async () => {
+		it("should force valid apiProvider to ollama during initialization", async () => {
 			// Reset and create a new proxy with valid provider in state
 			vi.clearAllMocks()
 			mockGlobalState.get.mockImplementation((key: string) => {
 				if (key === "apiProvider") {
-					return "anthropic" // Valid provider
+					return "anthropic" // Valid provider, will be forced to ollama
 				}
 				return undefined
 			})
@@ -460,10 +460,9 @@ describe("ContextProxy", () => {
 			const proxyWithValidProvider = new ContextProxy(mockContext)
 			await proxyWithValidProvider.initialize()
 
-			// Should NOT have called update for apiProvider (it's valid)
-			const updateCalls = mockGlobalState.update.mock.calls
-			const apiProviderUpdateCalls = updateCalls.filter((call: any[]) => call[0] === "apiProvider")
-			expect(apiProviderUpdateCalls.length).toBe(0)
+			// Provider should be forced when read
+			const settings = proxyWithValidProvider.getProviderSettings()
+			expect(settings.apiProvider).toBe("ollama")
 		})
 	})
 
@@ -481,15 +480,15 @@ describe("ContextProxy", () => {
 			expect(settings.apiModelId).toBe("some-model")
 		})
 
-		it("should pass through valid apiProvider", async () => {
+		it("should force valid apiProvider to ollama", async () => {
 			// Set a valid provider in state
 			await proxy.updateGlobalState("apiProvider", "anthropic")
 			await proxy.updateGlobalState("apiModelId", "claude-3-opus-20240229")
 
 			const settings = proxy.getProviderSettings()
 
-			// Valid provider should be returned
-			expect(settings.apiProvider).toBe("anthropic")
+			// Provider should be forced to ollama while preserving model id
+			expect(settings.apiProvider).toBe("ollama")
 			expect(settings.apiModelId).toBe("claude-3-opus-20240229")
 		})
 

@@ -230,7 +230,7 @@ describe("ProviderSettingsManager", () => {
 			expect(storedConfig.migrations.todoListEnabledMigrated).toEqual(true)
 		})
 
-		it("should apply model migrations for all providers", async () => {
+		it("should force all providers to ollama (skip legacy migrations)", async () => {
 			mockSecrets.get.mockResolvedValue(
 				JSON.stringify({
 					currentApiConfigName: "default",
@@ -274,17 +274,15 @@ describe("ProviderSettingsManager", () => {
 			const calls = mockSecrets.store.mock.calls
 			const storedConfig = JSON.parse(calls[calls.length - 1][1])
 
-			// Roo provider configs should be migrated
-			expect(storedConfig.apiConfigs.default.apiModelId).toEqual("roo/code-supernova-1-million")
-			expect(storedConfig.apiConfigs.test.apiModelId).toEqual("roo/code-supernova-1-million")
-			expect(storedConfig.apiConfigs.existing.apiModelId).toEqual("roo/code-supernova-1-million")
-
-			// Non-roo provider configs should not be migrated
-			expect(storedConfig.apiConfigs.otherProvider.apiModelId).toEqual("roo/code-supernova")
-			expect(storedConfig.apiConfigs.noProvider.apiModelId).toEqual("roo/code-supernova")
+			// All providers should be rewritten to ollama; model IDs remain unchanged
+			expect(storedConfig.apiConfigs.default.apiProvider).toEqual("ollama")
+			expect(storedConfig.apiConfigs.test.apiProvider).toEqual("ollama")
+			expect(storedConfig.apiConfigs.existing.apiProvider).toEqual("ollama")
+			expect(storedConfig.apiConfigs.otherProvider.apiProvider).toEqual("ollama")
+			expect(storedConfig.apiConfigs.noProvider.apiProvider).toBeUndefined()
 		})
 
-		it("should apply model migrations every time, not just once", async () => {
+		it("should force providers to ollama on every load", async () => {
 			// First load with old model
 			mockSecrets.get.mockResolvedValue(
 				JSON.stringify({
@@ -311,7 +309,7 @@ describe("ProviderSettingsManager", () => {
 			// Verify migration happened
 			let calls = mockSecrets.store.mock.calls
 			let storedConfig = JSON.parse(calls[calls.length - 1][1])
-			expect(storedConfig.apiConfigs.default.apiModelId).toEqual("roo/code-supernova-1-million")
+			expect(storedConfig.apiConfigs.default.apiProvider).toEqual("ollama")
 
 			// Create a new instance to simulate another load
 			const newManager = new ProviderSettingsManager(mockContext)
@@ -342,7 +340,7 @@ describe("ProviderSettingsManager", () => {
 			// Verify migration happened again
 			calls = mockSecrets.store.mock.calls
 			storedConfig = JSON.parse(calls[calls.length - 1][1])
-			expect(storedConfig.apiConfigs.default.apiModelId).toEqual("roo/code-supernova-1-million")
+			expect(storedConfig.apiConfigs.default.apiProvider).toEqual("ollama")
 		})
 
 		it("should throw error if secrets storage fails", async () => {
@@ -381,8 +379,8 @@ describe("ProviderSettingsManager", () => {
 
 			const configs = await providerSettingsManager.listConfig()
 			expect(configs).toEqual([
-				{ name: "default", id: "default", apiProvider: undefined },
-				{ name: "test", id: "test-id", apiProvider: "anthropic" },
+				{ name: "default", id: "default", apiProvider: undefined, modelId: undefined },
+				{ name: "test", id: "test-id", apiProvider: "ollama", modelId: undefined },
 			])
 		})
 
@@ -660,7 +658,7 @@ describe("ProviderSettingsManager", () => {
 			const { name, ...providerSettings } = await providerSettingsManager.activateProfile({ name: "test" })
 
 			expect(name).toBe("test")
-			expect(providerSettings).toEqual({ apiProvider: "anthropic", apiKey: "test-key", id: "test-id" })
+			expect(providerSettings).toEqual({ apiProvider: "ollama", apiKey: "test-key", id: "test-id" })
 
 			// Get the stored config to check the structure.
 			const calls = mockSecrets.store.mock.calls
@@ -668,7 +666,7 @@ describe("ProviderSettingsManager", () => {
 			expect(storedConfig.currentApiConfigName).toBe("test")
 
 			expect(storedConfig.apiConfigs.test).toEqual({
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 				apiKey: "test-key",
 				id: "test-id",
 			})
@@ -745,7 +743,7 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(finalStoredConfigJson)
 			// The valid provider should be untouched
 			expect(storedConfig.apiConfigs.valid).toBeDefined()
-			expect(storedConfig.apiConfigs.valid.apiProvider).toBe("anthropic")
+			expect(storedConfig.apiConfigs.valid.apiProvider).toBe("ollama")
 
 			// The config with the removed provider should have its apiProvider reset to undefined
 			// but still be present (not filtered out entirely)
@@ -788,7 +786,7 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(finalStoredConfigJson)
 			// Valid config should be untouched
 			expect(storedConfig.apiConfigs.valid).toBeDefined()
-			expect(storedConfig.apiConfigs.valid.apiProvider).toBe("anthropic")
+			expect(storedConfig.apiConfigs.valid.apiProvider).toBe("ollama")
 
 			// Invalid provider config should be sanitized - kept but apiProvider reset to undefined
 			expect(storedConfig.apiConfigs.invalidProvider).toBeDefined()
@@ -882,7 +880,7 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(mockSecrets.store.mock.calls[0][1])
 			expect(storedConfig.apiConfigs["cloud-profile"]).toEqual({
 				id: "cloud-id-1",
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 				apiModelId: "claude-3-opus-20240229",
 				// apiKey should be removed
 			})
@@ -924,7 +922,7 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(mockSecrets.store.mock.calls[0][1])
 			expect(storedConfig.apiConfigs["updated-name"]).toEqual({
 				id: "cloud-id-1",
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 				apiKey: "existing-secret", // Preserved
 				apiModelId: "claude-3-opus-20240229", // Updated
 			})
@@ -993,11 +991,11 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(mockSecrets.store.mock.calls[0][1])
 			expect(storedConfig.apiConfigs["conflict-name"]).toEqual({
 				id: "cloud-id-1",
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 			})
 			expect(storedConfig.apiConfigs["conflict-name_local"]).toEqual({
 				id: "local-id",
-				apiProvider: "openai",
+				apiProvider: "ollama",
 			})
 			expect(storedConfig.cloudProfileIds).toEqual(["cloud-id-1"])
 		})
@@ -1031,15 +1029,15 @@ describe("ProviderSettingsManager", () => {
 			const storedConfig = JSON.parse(mockSecrets.store.mock.calls[0][1])
 			expect(storedConfig.apiConfigs["conflict-name"]).toEqual({
 				id: "cloud-id-1",
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 			})
 			expect(storedConfig.apiConfigs["conflict-name_1"]).toEqual({
 				id: "local-id-1",
-				apiProvider: "openai",
+				apiProvider: "ollama",
 			})
 			expect(storedConfig.apiConfigs["conflict-name_local"]).toEqual({
 				id: "local-id-2",
-				apiProvider: "vertex",
+				apiProvider: "ollama",
 			})
 		})
 
@@ -1153,7 +1151,7 @@ describe("ProviderSettingsManager", () => {
 			// Check updates
 			expect(storedConfig.apiConfigs["updated-keep"]).toEqual({
 				id: "cloud-id-1",
-				apiProvider: "anthropic",
+				apiProvider: "ollama",
 				apiKey: "secret1", // preserved
 				apiModelId: "claude-3-opus-20240229",
 			})
@@ -1161,17 +1159,17 @@ describe("ProviderSettingsManager", () => {
 			// Check renames
 			expect(storedConfig.apiConfigs["rename-me_local"]).toEqual({
 				id: "local-id",
-				apiProvider: "vertex",
+				apiProvider: "ollama",
 			})
 			expect(storedConfig.apiConfigs["rename-me"]).toEqual({
 				id: "cloud-id-3",
-				apiProvider: "openai",
+				apiProvider: "ollama",
 			})
 
 			// Check new additions
 			expect(storedConfig.apiConfigs["new-cloud"]).toEqual({
 				id: "cloud-id-4",
-				apiProvider: "vertex",
+				apiProvider: "ollama",
 			})
 
 			expect(storedConfig.cloudProfileIds).toEqual(["cloud-id-1", "cloud-id-3", "cloud-id-4"])
