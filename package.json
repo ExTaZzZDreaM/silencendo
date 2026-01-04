@@ -5,11 +5,26 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "node dist/index.js"
+    "dev": "node dist/index.js",
+    "setup:docker": "chmod +x scripts/pull-sandbox-images.sh && bash scripts/pull-sandbox-images.sh",
+    "test": "bash test/run-all-tests.sh",
+    "test:config": "node test/config-test.mjs",
+    "test:security": "node test/security-test.mjs",
+    "test:images": "node test/image-detection-test.mjs",
+    "test:terminal": "node test/terminal-test.mjs",
+    "test:script": "node test/script-test.mjs",
+    "test:sandbox": "node scripts/test-sandbox.mjs",
+    "test:quick": "bash scripts/quick-test.sh"
   },
   
   "devDependencies": {
+    "@types/dockerode": "^3.3.31",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.2",
+    "js-yaml": "^4.1.0"
   }
 }

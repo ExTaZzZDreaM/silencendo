@@ -1,0 +1,33 @@
+security:
+  terminal:
+    enabled: true
+    sandbox:
+      enabled: true
+      mode: "docker"
+      
+      docker_images:
+        go: "golang:1.23-alpine"
+        node: "node:22-alpine"
+        python: "python:3.12-slim"
+        rust: "rust:alpine"
+        default: "alpine:latest"
+      
+      limits:
+        cpu: "1"
+        memory: "256m"
+        timeout: "30s"
+        max_output: "1m"
+        max_processes: 10
+      
+      volumes:
+        project_root:
+          host: "."
+          container: "/workspace"
+          read_only: true
+        temp:
+          host: "/tmp"
+          container: "/tmp"
+          read_only: false
+      
+      network:
+        enabled: false

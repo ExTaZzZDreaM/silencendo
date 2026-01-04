@@ -1,7 +1,14 @@
 import { MCPProcessManager } from "./mcp/manager/processManager.js";
 import { initializeMCP } from "./mcp/manager/mcpConnection.js";
+import { checkDockerAvailability, printUnsafeModeWarning } from "./utils/dockerCheck.js";
 const manager = new MCPProcessManager();
 async function main() {
+    // Check Docker availability for terminal sandbox
+    console.log("Checking Docker availability...");
+    const dockerCheck = await checkDockerAvailability();
+    if (!dockerCheck.available) {
+        printUnsafeModeWarning();
+    }
     const servers = [
         {
             name: "filesystem",
