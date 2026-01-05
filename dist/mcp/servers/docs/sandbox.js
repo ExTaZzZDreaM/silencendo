@@ -37,7 +37,7 @@ export class DocsCache {
         }
         return null;
     }
-    set(query, results, ttlMs = 86400000) {
+    set(query, results, ttlMs = 864000) {
         const queryHash = this.hashQuery(query);
         const expiresAt = Date.now() + ttlMs;
         this.db

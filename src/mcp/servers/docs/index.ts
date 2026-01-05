@@ -68,19 +68,88 @@ async function searchDuckDuckGo(query: string): Promise<DocsSearchResult> {
 }
 
 async function getCachedOrFetch(query: string): Promise<DocsSearchResult> {
-  // 1. Check cache
+ // 1. Check cache
   const cached = cache.get(query)
-  if (cached) {
-    return cached
+  if (cached && typeof cached === 'object' && 
+      ('abstract' in cached || 'definition' in cached || 'results' in cached)) {
+    // This is a DocsSearchResult
+    return cached as DocsSearchResult;
   }
 
   // 2. If not cached - fetch from DuckDuckGo
   const results = await searchDuckDuckGo(query)
 
   // 3. Save to cache (24h TTL)
-  cache.set(query, results, 86400000)
+ cache.set(query, results, 86400000)
 
   return results
+}
+
+// Helper functions
+function generateLibraryId(query: string): string {
+  return `ddg-${cache.hashQuery(query)}`;
+}
+
+function extractLibraryName(abstract: string): string {
+  // Extract library name from abstract - look for common patterns
+  const patterns = [
+    /^([a-zA-Z0-9_-]+):?\s/,  // library: description
+    /^([a-zA-Z0-9_-]+)\s/,     // library description
+    /is a ([a-zA-Z0-9_-]+)/,   // "is a React" - extract React
+  ];
+  
+  for (const pattern of patterns) {
+    const match = abstract.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return abstract.split(' ')[0] || 'unknown';
+}
+
+function extractVersion(abstract: string | undefined): string | undefined {
+  if (!abstract) return undefined;
+  
+  // Look for version patterns like v1.2.3, version 1.2.3, etc.
+  const patterns = [
+    /v?(\d+\.\d+\.\d+)/,
+    /version\s+(\d+\.\d+\.\d+)/,
+    /(\d+\.\d+\.\d+)/
+  ];
+  
+ for (const pattern of patterns) {
+    const match = abstract.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return undefined;
+}
+
+function truncate(text: string, maxLength: number): string {
+  if (!text || text.length <= maxLength) {
+    return text || '';
+  }
+  return text.substring(0, maxLength) + '...';
+}
+
+// Cache for docs_fetch results
+function checkFetchCache(libraryId: string, topic?: string): { content: string, url: string } | null {
+  const cacheKey = `${libraryId}:${topic || ''}`;
+  const result = cache.get(cacheKey);
+  // Check if result is a DocsFetchResult (has content and url properties)
+  if (result && typeof result === 'object' && 'content' in result && 'url' in result) {
+    return result as { content: string, url: string };
+  }
+  return null;
+}
+
+function setFetchCache(libraryId: string, topic: string | undefined, content: string, url: string) {
+  const cacheKey = `${libraryId}:${topic || ''}`;
+  // Store in cache with libraryId, topic, content and url
+  cache.set(cacheKey, { content, url }, 86400000); // 24h TTL
 }
 
 process.stdin.on("data", async (chunk: Buffer) => {
@@ -136,6 +205,10 @@ process.stdin.on("data", async (chunk: Buffer) => {
                   topic: {
                     type: "string",
                     description: "Topic to search for in the library documentation"
+                  },
+                  tokens: {
+                    type: "number",
+                    description: "Maximum number of tokens for content truncation"
                   }
                 },
                 required: ["library_id", "topic"]
@@ -149,70 +222,96 @@ process.stdin.on("data", async (chunk: Buffer) => {
         const { name, arguments: args } = msg.params
 
         if (name === "docs_resolve") {
-          const query = args.query as string
-          const results = await getCachedOrFetch(query)
+          const query = args.query as string;
+          const results = await getCachedOrFetch(query);
 
-          // Format response for docs_resolve
-          const libraries = []
-          if (results.abstract) {
-            libraries.push({
-              id: `ddg-${cache.hashQuery(query)}`,
-              name: query,
-              description: results.abstract
-            })
-          }
-          if (results.results && results.results.length > 0) {
-            results.results.forEach((result, idx) => {
-              libraries.push({
-                id: `ddg-result-${idx}`,
-                name: result.title,
-                description: result.snippet
-              })
-            })
-          }
+          // Format response for docs_resolve according to new requirements
+          const libraryName = results.abstract ? extractLibraryName(results.abstract) : query;
+          const version = extractVersion(results.abstract);
+          
+          const libraries = [{
+            id: generateLibraryId(query),
+            name: libraryName,
+            description: results.abstract || results.definition,
+            source: "duckduckgo",
+            version: version
+          }];
 
           respond(msg.id, {
             content: [
               {
                 type: "text",
-                text: JSON.stringify({ libraries }, null, 2)
+                text: JSON.stringify({ results: libraries }, null, 2)
               }
             ]
-          })
+          });
         }
 
         if (name === "docs_fetch") {
-          const libraryId = args.library_id as string
-          const topic = args.topic as string
-          const query = `${libraryId} ${topic}`.replace(/^ddg-/, "")
+          const libraryId = args.library_id as string;
+          const topic = args.topic as string;
+          const tokens = (args.tokens as number) || 5000; // Default to 5000 tokens if not specified
+          
+          // 1. Check cache with library_id and topic
+          const cached = checkFetchCache(libraryId, topic);
+          if (cached) {
+            // Return in the format expected by the test
+            const responseContent = {
+              snippets: [{
+                snippet: cached.content,
+                url: cached.url
+              }]
+            };
+            
+            respond(msg.id, {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(responseContent)
+                }
+              ]
+            });
+          } else {
+            // 2. If not in cache - request from DuckDuckGo
+            const query = topic ? `${libraryId} ${topic}` : libraryId;
+            const results = await getCachedOrFetch(query);
 
-          const results = await getCachedOrFetch(query)
+            // 3. Extract snippet and URL
+            const firstResult = results.results?.[0];
+            if (firstResult) {
+              const truncatedContent = truncate(firstResult.snippet, tokens);
+              const version = extractVersion(results.abstract);
 
-          // Format response for docs_fetch
-          const snippets = []
-          if (results.abstract) {
-            snippets.push({
-              snippet: results.abstract,
-              url: results.results?.[0]?.url || ""
-            })
+              // Cache the result
+              setFetchCache(libraryId, topic, truncatedContent, firstResult.url);
+
+              const responseContent = {
+                snippets: [{
+                  snippet: truncatedContent,
+                  url: firstResult.url
+                }]
+              };
+              
+              respond(msg.id, {
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify(responseContent)
+                  }
+                ]
+              });
+            } else {
+              // If no results found, return empty response
+              respond(msg.id, {
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify({ snippets: [] })
+                  }
+                ]
+              });
+            }
           }
-          if (results.results) {
-            results.results.forEach((result) => {
-              snippets.push({
-                snippet: result.snippet,
-                url: result.url
-              })
-            })
-          }
-
-          respond(msg.id, {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ snippets }, null, 2)
-              }
-            ]
-          })
         }
       }
     } catch (err: any) {
@@ -249,4 +348,3 @@ process.on("SIGINT", () => {
   cache.close()
   process.exit(0)
 })
-

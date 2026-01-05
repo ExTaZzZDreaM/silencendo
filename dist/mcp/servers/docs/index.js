@@ -47,7 +47,9 @@ async function searchDuckDuckGo(query) {
 async function getCachedOrFetch(query) {
     // 1. Check cache
     const cached = cache.get(query);
-    if (cached) {
+    if (cached && typeof cached === 'object' &&
+        ('abstract' in cached || 'definition' in cached || 'results' in cached)) {
+        // This is a DocsSearchResult
         return cached;
     }
     // 2. If not cached - fetch from DuckDuckGo
@@ -55,6 +57,63 @@ async function getCachedOrFetch(query) {
     // 3. Save to cache (24h TTL)
     cache.set(query, results, 86400000);
     return results;
+}
+// Helper functions
+function generateLibraryId(query) {
+    return `ddg-${cache.hashQuery(query)}`;
+}
+function extractLibraryName(abstract) {
+    // Extract library name from abstract - look for common patterns
+    const patterns = [
+        /^([a-zA-Z0-9_-]+):?\s/, // library: description
+        /^([a-zA-Z0-9_-]+)\s/, // library description
+        /is a ([a-zA-Z0-9_-]+)/, // "is a React" - extract React
+    ];
+    for (const pattern of patterns) {
+        const match = abstract.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    return abstract.split(' ')[0] || 'unknown';
+}
+function extractVersion(abstract) {
+    if (!abstract)
+        return undefined;
+    // Look for version patterns like v1.2.3, version 1.2.3, etc.
+    const patterns = [
+        /v?(\d+\.\d+\.\d+)/,
+        /version\s+(\d+\.\d+\.\d+)/,
+        /(\d+\.\d+\.\d+)/
+    ];
+    for (const pattern of patterns) {
+        const match = abstract.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    return undefined;
+}
+function truncate(text, maxLength) {
+    if (!text || text.length <= maxLength) {
+        return text || '';
+    }
+    return text.substring(0, maxLength) + '...';
+}
+// Cache for docs_fetch results
+function checkFetchCache(libraryId, topic) {
+    const cacheKey = `${libraryId}:${topic || ''}`;
+    const result = cache.get(cacheKey);
+    // Check if result is a DocsFetchResult (has content and url properties)
+    if (result && typeof result === 'object' && 'content' in result && 'url' in result) {
+        return result;
+    }
+    return null;
+}
+function setFetchCache(libraryId, topic, content, url) {
+    const cacheKey = `${libraryId}:${topic || ''}`;
+    // Store in cache with libraryId, topic, content and url
+    cache.set(cacheKey, { content, url }, 86400000); // 24h TTL
 }
 process.stdin.on("data", async (chunk) => {
     const input = chunk.toString("utf8").trim();
@@ -105,6 +164,10 @@ process.stdin.on("data", async (chunk) => {
                                     topic: {
                                         type: "string",
                                         description: "Topic to search for in the library documentation"
+                                    },
+                                    tokens: {
+                                        type: "number",
+                                        description: "Maximum number of tokens for content truncation"
                                     }
                                 },
                                 required: ["library_id", "topic"]
@@ -118,29 +181,21 @@ process.stdin.on("data", async (chunk) => {
                 if (name === "docs_resolve") {
                     const query = args.query;
                     const results = await getCachedOrFetch(query);
-                    // Format response for docs_resolve
-                    const libraries = [];
-                    if (results.abstract) {
-                        libraries.push({
-                            id: `ddg-${cache.hashQuery(query)}`,
-                            name: query,
-                            description: results.abstract
-                        });
-                    }
-                    if (results.results && results.results.length > 0) {
-                        results.results.forEach((result, idx) => {
-                            libraries.push({
-                                id: `ddg-result-${idx}`,
-                                name: result.title,
-                                description: result.snippet
-                            });
-                        });
-                    }
+                    // Format response for docs_resolve according to new requirements
+                    const libraryName = results.abstract ? extractLibraryName(results.abstract) : query;
+                    const version = extractVersion(results.abstract);
+                    const libraries = [{
+                            id: generateLibraryId(query),
+                            name: libraryName,
+                            description: results.abstract || results.definition,
+                            source: "duckduckgo",
+                            version: version
+                        }];
                     respond(msg.id, {
                         content: [
                             {
                                 type: "text",
-                                text: JSON.stringify({ libraries }, null, 2)
+                                text: JSON.stringify({ results: libraries }, null, 2)
                             }
                         ]
                     });
@@ -148,32 +203,64 @@ process.stdin.on("data", async (chunk) => {
                 if (name === "docs_fetch") {
                     const libraryId = args.library_id;
                     const topic = args.topic;
-                    const query = `${libraryId} ${topic}`.replace(/^ddg-/, "");
-                    const results = await getCachedOrFetch(query);
-                    // Format response for docs_fetch
-                    const snippets = [];
-                    if (results.abstract) {
-                        snippets.push({
-                            snippet: results.abstract,
-                            url: results.results?.[0]?.url || ""
+                    const tokens = args.tokens || 5000; // Default to 5000 tokens if not specified
+                    // 1. Check cache with library_id and topic
+                    const cached = checkFetchCache(libraryId, topic);
+                    if (cached) {
+                        // Return in the format expected by the test
+                        const responseContent = {
+                            snippets: [{
+                                    snippet: cached.content,
+                                    url: cached.url
+                                }]
+                        };
+                        respond(msg.id, {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(responseContent)
+                                }
+                            ]
                         });
                     }
-                    if (results.results) {
-                        results.results.forEach((result) => {
-                            snippets.push({
-                                snippet: result.snippet,
-                                url: result.url
+                    else {
+                        // 2. If not in cache - request from DuckDuckGo
+                        const query = topic ? `${libraryId} ${topic}` : libraryId;
+                        const results = await getCachedOrFetch(query);
+                        // 3. Extract snippet and URL
+                        const firstResult = results.results?.[0];
+                        if (firstResult) {
+                            const truncatedContent = truncate(firstResult.snippet, tokens);
+                            const version = extractVersion(results.abstract);
+                            // Cache the result
+                            setFetchCache(libraryId, topic, truncatedContent, firstResult.url);
+                            const responseContent = {
+                                snippets: [{
+                                        snippet: truncatedContent,
+                                        url: firstResult.url
+                                    }]
+                            };
+                            respond(msg.id, {
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: JSON.stringify(responseContent)
+                                    }
+                                ]
                             });
-                        });
+                        }
+                        else {
+                            // If no results found, return empty response
+                            respond(msg.id, {
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: JSON.stringify({ snippets: [] })
+                                    }
+                                ]
+                            });
+                        }
                     }
-                    respond(msg.id, {
-                        content: [
-                            {
-                                type: "text",
-                                text: JSON.stringify({ snippets }, null, 2)
-                            }
-                        ]
-                    });
                 }
             }
         }

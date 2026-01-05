@@ -18,6 +18,11 @@ export interface DocsSearchResult {
   }>
 }
 
+export interface DocsFetchResult {
+  content: string;
+  url: string;
+}
+
 export class DocsCache {
   private db: Database.Database
 
@@ -47,7 +52,7 @@ export class DocsCache {
     return createHash("sha256").update(query.toLowerCase().trim()).digest("hex")
   }
 
-  get(query: string): DocsSearchResult | null {
+  get(query: string): DocsSearchResult | DocsFetchResult | null {
     const queryHash = this.hashQuery(query)
     const now = Date.now()
 
@@ -62,7 +67,7 @@ export class DocsCache {
     return null
   }
 
-  set(query: string, results: DocsSearchResult, ttlMs: number = 86400000) {
+  set(query: string, results: DocsSearchResult | DocsFetchResult, ttlMs: number = 864000) {
     const queryHash = this.hashQuery(query)
     const expiresAt = Date.now() + ttlMs
 
@@ -77,4 +82,3 @@ export class DocsCache {
     this.db.close()
   }
 }
-
