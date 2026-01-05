@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_STORAGE": "postgresql",
+        "MEMORY_DB_URL": "${MEMORY_DB_URL}",
+        "EMBEDDINGS_MODEL": "sentence-transformers/all-MiniLM-L6-v2",
+        "VECTOR_DIMENSION": "384"
+      }
+    }
+  }
+}

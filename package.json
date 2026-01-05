@@ -7,9 +7,14 @@
     "build": "tsc",
     "dev": "node dist/index.js"
   },
-  
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/pg": "^8.16.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-memory": "^2025.11.25",
+    "@modelcontextprotocol/server-postgres": "^0.6.2",
+    "dotenv": "^17.2.3"
   }
 }

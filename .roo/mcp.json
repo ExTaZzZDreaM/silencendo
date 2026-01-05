@@ -1,11 +1,1 @@
-{
-  "mcpServers": {
-    "filesystem": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "C:/users/faraserl/silence-ai/dist/mcp/servers/filesystem/index.js"
-      ]
-    }
-  }
-}
+{"mcpServers":{"filesystem":{"type":"stdio","command":"node","args":["dist/mcp/servers/filesystem/index.js"]},"memory":{"type":"stdio","command":"node","args":["dist/mcp/servers/memory/index.js"],"disabled":false,"alwaysAllow":[]}}}

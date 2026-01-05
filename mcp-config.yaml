@@ -1,0 +1,42 @@
+database:
+  enabled: true
+  host: "${DB_HOST:localhost}"
+  port: "${DB_PORT:5432}"
+  name: "${DB_NAME:mydb}"
+  user: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+  max_connections: 10
+
+security:
+  database:
+    allow_mutations: false
+    max_query_time: 10s
+    max_rows: 1000
+    blocked_keywords:
+      - "DROP"
+      - "TRUNCATE"
+      - "ALTER"
+      - "DELETE"
+
+memory:
+  storage: "postgresql"
+  connection: "${MEMORY_DB_URL}"
+  embeddings:
+    enabled: true
+    model: "sentence-transformers/all-MiniLM-L6-v2"
+    cache_embeddings: true
+  hybrid_search:
+    enabled: true
+    vector_weight: 0.7
+    keyword_weight: 0.3
+    min_similarity: 0.5
+  vector_dimension: 384
+
+
+  embedding_cache:
+    enabled: true
+    size_mb: 100
+    ttl: 86400   
+  indexes:
+    ivfflat_lists: 100
+    probes: 10
