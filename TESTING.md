@@ -143,3 +143,5 @@ npm run build
 ### Ошибка подключения к DuckDuckGo
 Проверьте интернет-соединение и доступность `https://api.duckduckgo.com/`
 
+
+
