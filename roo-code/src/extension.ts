@@ -1,12 +1,15 @@
 import * as vscode from "vscode"
 import * as dotenvx from "@dotenvx/dotenvx"
 import * as path from "path"
+import * as fs from "fs"
 
 // Load environment variables from .env file
 try {
 	// Specify path to .env file in the project root directory
 	const envPath = path.join(__dirname, "..", ".env")
-	dotenvx.config({ path: envPath })
+	if (fs.existsSync(envPath)) {
+		dotenvx.config({ path: envPath })
+	}
 } catch (e) {
 	// Silently handle environment loading errors
 	console.warn("Failed to load environment variables:", e)
@@ -77,10 +80,15 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize telemetry service.
 	const telemetryService = TelemetryService.createInstance()
 
-	try {
-		telemetryService.register(new PostHogTelemetryClient())
-	} catch (error) {
-		console.warn("Failed to register PostHogTelemetryClient:", error)
+	// Only attempt to initialize PostHog when an API key is present.
+	const posthogApiKey = process.env["POSTHOG_API_KEY"]?.trim()
+
+	if (posthogApiKey) {
+		try {
+			telemetryService.register(new PostHogTelemetryClient(posthogApiKey))
+		} catch (error) {
+			console.warn("Failed to register PostHogTelemetryClient:", error)
+		}
 	}
 
 	// Create logger for cloud services.

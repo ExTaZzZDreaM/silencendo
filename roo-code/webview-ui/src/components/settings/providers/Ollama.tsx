@@ -50,11 +50,12 @@ export const Ollama = ({ apiConfiguration, setApiConfigurationField }: OllamaPro
 
 	useEvent("message", onMessage)
 
-	// Refresh models on mount
+	// Refresh models when a base URL is available or changes.
 	useEffect(() => {
-		// Request fresh models - the handler now flushes cache automatically
-		vscode.postMessage({ type: "requestOllamaModels" })
-	}, [])
+		if (apiConfiguration?.ollamaBaseUrl) {
+			vscode.postMessage({ type: "requestOllamaModels" })
+		}
+	}, [apiConfiguration?.ollamaBaseUrl])
 
 	// Check if the selected model exists in the fetched models
 	const modelNotAvailable = useMemo(() => {

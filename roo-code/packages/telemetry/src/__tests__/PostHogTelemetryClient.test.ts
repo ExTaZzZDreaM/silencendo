@@ -39,6 +39,8 @@ describe("PostHogTelemetryClient", () => {
 		}
 		;(PostHog as any).mockImplementation(() => mockPostHogClient)
 
+		process.env.POSTHOG_API_KEY = "test-api-key"
+
 		// @ts-expect-error - Accessing private static property for testing
 		PostHogTelemetryClient._instance = undefined
 		;(vscode.workspace.getConfiguration as any).mockReturnValue({
@@ -46,9 +48,42 @@ describe("PostHogTelemetryClient", () => {
 		})
 	})
 
+	afterEach(() => {
+		delete process.env.POSTHOG_API_KEY
+	})
+
+	const createClient = () => new PostHogTelemetryClient(process.env["POSTHOG_API_KEY"])
+
+	describe("initialization", () => {
+		it("should disable telemetry when POSTHOG_API_KEY is missing", async () => {
+			delete process.env.POSTHOG_API_KEY
+
+			const client = createClient()
+			client.updateTelemetryState(true)
+
+			await client.capture({ event: TelemetryEventName.TASK_CREATED })
+			await client.captureException(new Error("Test error"))
+
+			expect(PostHog).not.toHaveBeenCalled()
+			expect(client.isTelemetryEnabled()).toBe(false)
+			expect(mockPostHogClient.capture).not.toHaveBeenCalled()
+			expect(mockPostHogClient.captureException).not.toHaveBeenCalled()
+		})
+
+		it("should initialize the PostHog client when an API key is provided", () => {
+			expect(process.env.POSTHOG_API_KEY).toBe("test-api-key")
+
+			const client = createClient()
+
+			expect((client as any).client).toBe(mockPostHogClient)
+			expect(PostHog).toHaveBeenCalledWith("test-api-key", { host: "https://ph.roocode.com" })
+			expect(client.isTelemetryEnabled()).toBe(false)
+		})
+	})
+
 	describe("isEventCapturable", () => {
 		it("should return true for events not in exclude list", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const isEventCapturable = getPrivateProperty<(eventName: TelemetryEventName) => boolean>(
 				client,
@@ -60,7 +95,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should return false for events in exclude list", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const isEventCapturable = getPrivateProperty<(eventName: TelemetryEventName) => boolean>(
 				client,
@@ -73,7 +108,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("isPropertyCapturable", () => {
 		it("should filter out git repository properties", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const isPropertyCapturable = getPrivateProperty<(propertyName: string) => boolean>(
 				client,
@@ -96,7 +131,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("getEventProperties", () => {
 		it("should merge provider properties with event properties", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const mockProvider: TelemetryPropertiesProvider = {
 				getTelemetryProperties: vi.fn().mockResolvedValue({
@@ -137,7 +172,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should filter out git repository properties", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const mockProvider: TelemetryPropertiesProvider = {
 				getTelemetryProperties: vi.fn().mockResolvedValue({
@@ -185,7 +220,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should handle errors from provider gracefully", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const mockProvider: TelemetryPropertiesProvider = {
 				getTelemetryProperties: vi.fn().mockRejectedValue(new Error("Provider error")),
@@ -212,7 +247,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should return event properties when no provider is set", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			const getEventProperties = getPrivateProperty<
 				(event: { event: TelemetryEventName; properties?: Record<string, any> }) => Promise<Record<string, any>>
@@ -229,7 +264,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("capture", () => {
 		it("should not capture events when telemetry is disabled", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(false)
 
 			await client.capture({
@@ -241,7 +276,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should not capture events that are not capturable", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			await client.capture({
@@ -253,7 +288,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture events when telemetry is enabled and event is capturable", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const mockProvider: TelemetryPropertiesProvider = {
@@ -285,7 +320,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should filter out git repository properties when capturing events", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const mockProvider: TelemetryPropertiesProvider = {
@@ -329,7 +364,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("updateTelemetryState", () => {
 		it("should enable telemetry when user opts in and global telemetry is enabled", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			;(vscode.workspace.getConfiguration as any).mockReturnValue({
 				get: vi.fn().mockReturnValue("all"),
@@ -342,7 +377,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should disable telemetry when user opts out", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			;(vscode.workspace.getConfiguration as any).mockReturnValue({
 				get: vi.fn().mockReturnValue("all"),
@@ -355,7 +390,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should disable telemetry when global telemetry is disabled, regardless of user opt-in", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 
 			;(vscode.workspace.getConfiguration as any).mockReturnValue({
 				get: vi.fn().mockReturnValue("off"),
@@ -369,7 +404,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("captureException", () => {
 		it("should not capture exceptions when telemetry is disabled", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(false)
 
 			const error = new Error("Test error")
@@ -379,7 +414,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture exceptions with app version from provider", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const mockProvider: TelemetryPropertiesProvider = {
@@ -409,7 +444,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture exceptions with undefined app version when no provider is set", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new Error("Test error")
@@ -423,7 +458,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("shutdown", () => {
 		it("should call shutdown on the PostHog client", async () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			await client.shutdown()
 			expect(mockPostHogClient.shutdown).toHaveBeenCalled()
 		})
@@ -431,7 +466,7 @@ describe("PostHogTelemetryClient", () => {
 
 	describe("captureException error filtering", () => {
 		it("should filter out 429 rate limit errors (via status property)", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an error with status property (like OpenAI SDK errors)
@@ -443,7 +478,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should filter out 402 billing errors (via status property)", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an error with status 402 (Payment Required)
@@ -455,7 +490,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should filter out errors with '429' in message", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new Error("429 Rate limit exceeded: free-models-per-day")
@@ -466,7 +501,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should filter out errors containing 'rate limit' (case insensitive)", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new Error("Request failed due to Rate Limit")
@@ -477,7 +512,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture non-rate-limit errors", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new Error("Internal server error")
@@ -489,7 +524,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture errors with non-429 status codes", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = Object.assign(new Error("Internal server error"), { status: 500 })
@@ -501,7 +536,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should use nested error message from OpenAI SDK error structure for filtering", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an error with nested metadata (like OpenRouter upstream errors)
@@ -519,7 +554,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture errors with nested metadata and override error.message with extracted message", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an OpenAI SDK-like error with nested metadata (non-rate-limit error)
@@ -541,7 +576,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture errors with nested error.message and override error.message with extracted message", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an OpenAI SDK-like error with nested message but no metadata.raw
@@ -562,7 +597,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should use primary message when no nested error structure exists", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			// Create an OpenAI SDK-like error without nested error object
@@ -580,7 +615,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture ApiProviderError and auto-extract properties", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new ApiProviderError("Test error", "OpenRouter", "gpt-4", "createMessage", 500)
@@ -597,7 +632,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture ApiProviderError with additionalProperties merged with auto-extracted properties", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new ApiProviderError("Test error", "OpenRouter", "gpt-4", "createMessage")
@@ -614,7 +649,7 @@ describe("PostHogTelemetryClient", () => {
 		})
 
 		it("should capture regular errors with additionalProperties", () => {
-			const client = new PostHogTelemetryClient()
+			const client = createClient()
 			client.updateTelemetryState(true)
 
 			const error = new Error("Regular error")

@@ -58,6 +58,68 @@ describe("Ollama Fetcher", () => {
 	})
 
 	describe("getOllamaModels", () => {
+		it("should return empty models and warn on HTTP 405 responses", async () => {
+			const baseUrl = "http://localhost:11434"
+			const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+			mockedAxios.get.mockRejectedValueOnce({
+				isAxiosError: true,
+				message: "Method Not Allowed",
+				response: { status: 405 },
+				toJSON: () => ({}),
+			})
+
+			const result = await getOllamaModels(baseUrl)
+
+			expect(result).toEqual({})
+			expect(consoleWarnSpy).toHaveBeenCalledWith(
+				expect.stringContaining(`[Ollama] Skipping model fetch from ${baseUrl}: HTTP 405`),
+			)
+
+			consoleWarnSpy.mockRestore()
+		})
+
+		it("should strip trailing slashes from baseUrl to avoid double-slash requests", async () => {
+			const baseUrlWithSlash = "http://localhost:11434/"
+			const modelName = "test-model:latest"
+
+			const mockApiTagsResponse = {
+				models: [
+					{
+						name: modelName,
+						model: modelName,
+						details: {
+							family: "llama",
+							families: ["llama"],
+							parameter_size: "7B",
+						},
+					},
+				],
+			}
+			const mockApiShowResponse = {
+				details: {
+					family: "llama",
+					families: ["llama"],
+					parameter_size: "7B",
+				},
+				model_info: {
+					"ollama.context_length": 4096,
+				},
+			}
+
+			mockedAxios.get.mockResolvedValueOnce({ data: mockApiTagsResponse })
+			mockedAxios.post.mockResolvedValueOnce({ data: mockApiShowResponse })
+
+			await getOllamaModels(baseUrlWithSlash)
+
+			expect(mockedAxios.get).toHaveBeenCalledWith("http://localhost:11434/api/tags", { headers: {} })
+			expect(mockedAxios.post).toHaveBeenCalledWith(
+				"http://localhost:11434/api/show",
+				{ model: modelName },
+				{ headers: {} },
+			)
+		})
+
 		it("should fetch model list from /api/tags and details for each model from /api/show", async () => {
 			const baseUrl = "http://localhost:11434"
 			const modelName = "devstral2to16:latest"

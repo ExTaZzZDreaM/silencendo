@@ -1,4 +1,5 @@
 .pnpm-store
+.node-versions/
 dist
 out
 out-*

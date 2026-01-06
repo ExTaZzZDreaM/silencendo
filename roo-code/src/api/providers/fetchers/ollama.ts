@@ -61,6 +61,8 @@ export async function getOllamaModels(
 
 	// clearing the input can leave an empty string; use the default in that case
 	baseUrl = baseUrl === "" ? "http://localhost:11434" : baseUrl
+	// avoid double slashes when building endpoints
+	baseUrl = baseUrl.replace(/\/+$/, "")
 
 	try {
 		if (!URL.canParse(baseUrl)) {
@@ -99,12 +101,32 @@ export async function getOllamaModels(
 			console.error(`Error parsing Ollama models response: ${JSON.stringify(parsedResponse.error, null, 2)}`)
 		}
 	} catch (error) {
-		if (error.code === "ECONNREFUSED") {
+		if (error?.code === "ECONNREFUSED") {
 			console.warn(`Failed connecting to Ollama at ${baseUrl}`)
 		} else {
-			console.error(
-				`Error fetching Ollama models: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
-			)
+			const status = error?.response?.status
+			if (status) {
+				// Gracefully handle API servers that respond with unexpected HTTP codes (e.g., proxies returning 405)
+				console.warn(`[Ollama] Skipping model fetch from ${baseUrl}: HTTP ${status} ${error?.message ?? ""}`.trim())
+				return models
+			}
+
+			const isAxiosError =
+				typeof axios.isAxiosError === "function" ? axios.isAxiosError(error) : error?.isAxiosError === true
+			if (isAxiosError) {
+				console.warn(`[Ollama] Skipping model fetch from ${baseUrl}: ${error.message}`)
+				return models
+			}
+
+			if (status) {
+				console.error(`[Ollama] Error fetching models from ${baseUrl}: HTTP ${status}`)
+			} else if (error instanceof Error) {
+				console.error(`[Ollama] Error fetching models from ${baseUrl}: ${error.message}`)
+			} else {
+				console.error(
+					`Error fetching Ollama models: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
+				)
+			}
 		}
 	}
 

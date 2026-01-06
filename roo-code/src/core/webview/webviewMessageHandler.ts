@@ -935,10 +935,17 @@ export const webviewMessageHandler = async (
 		case "requestOllamaModels": {
 			// Specific handler for Ollama models only.
 			const { apiConfiguration: ollamaApiConfig } = await provider.getState()
+			const ollamaBaseUrl = ollamaApiConfig.ollamaBaseUrl
+
+			if (!ollamaBaseUrl) {
+				console.debug("Ollama models fetch skipped: no base URL configured.")
+				break
+			}
+
 			try {
 				const ollamaOptions = {
 					provider: "ollama" as const,
-					baseUrl: ollamaApiConfig.ollamaBaseUrl,
+					baseUrl: ollamaBaseUrl,
 					apiKey: ollamaApiConfig.ollamaApiKey,
 				}
 				// Flush cache and refresh to ensure fresh models.
