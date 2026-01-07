@@ -3,5 +3,13 @@ docs:
     duckduckgo:
       requests_per_minute: 30
 
-
-
+search:
+  unified:
+    enabled: true
+    default_limit: 10
+    include_scores: true
+    source_weights:
+      memory: 1.0
+      code: 0.8
+      logs: 0.7
+      docs: 0.6
