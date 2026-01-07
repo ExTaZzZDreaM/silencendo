@@ -395,6 +395,16 @@
 					"maximum": 3600,
 					"description": "%settings.apiRequestTimeout.description%"
 				},
+				"roo-cline.toolProtocol": {
+					"type": "string",
+					"enum": ["native", "xml"],
+					"default": "xml",
+					"enumDescriptions": [
+						"%settings.toolProtocol.native.description%",
+						"%settings.toolProtocol.xml.description%"
+					],
+					"description": "%settings.toolProtocol.description%"
+				},
 				"roo-cline.newTaskRequireTodos": {
 					"type": "boolean",
 					"default": false,
@@ -418,6 +428,7 @@
 	"scripts": {
 		"lint": "eslint . --ext=ts --max-warnings=0",
 		"check-types": "tsc --noEmit",
+		"prebundle": "node ../scripts/start-qdrant.mjs --auto",
 		"pretest": "turbo run bundle --cwd ..",
 		"test": "vitest run",
 		"format": "prettier --write .",

@@ -26,40 +26,34 @@ export class QdrantVectorStore implements IVectorStore {
 	 */
 	constructor(workspacePath: string, url: string, vectorSize: number, apiKey?: string) {
 		// Parse the URL to determine the appropriate QdrantClient configuration
-		const parsedUrl = this.parseQdrantUrl(url)
+		const parsedUrl = this.parseQdrantUrl(url, apiKey)
+		const userProvidedTrailingSlash = typeof url === "string" && url.trim().endsWith("/")
 
 		// Store the resolved URL for our property
-		this.qdrantUrl = parsedUrl
 		this.workspacePath = workspacePath
 
 		try {
 			const urlObj = new URL(parsedUrl)
+			const hasExplicitPort = urlObj.port !== ""
+			const useHttps = urlObj.protocol === "https:"
+			const port = hasExplicitPort
+				? Number(urlObj.port)
+				: this.getDefaultPort(useHttps, apiKey, urlObj.hostname)
+			const prefix = urlObj.pathname === "/" ? undefined : urlObj.pathname.replace(/\/+$/, "")
+
+			this.qdrantUrl = this.formatUrl(
+				urlObj,
+				port,
+				hasExplicitPort || !this.isDefaultPort(port, useHttps),
+				userProvidedTrailingSlash && urlObj.pathname === "/",
+			)
 
 			// Always use host-based configuration with explicit ports to avoid QdrantClient defaults
-			let port: number
-			let useHttps: boolean
-
-			if (urlObj.port) {
-				// Explicit port specified - use it and determine protocol
-				port = Number(urlObj.port)
-				useHttps = urlObj.protocol === "https:"
-			} else {
-				// No explicit port - use protocol defaults
-				if (urlObj.protocol === "https:") {
-					port = 443
-					useHttps = true
-				} else {
-					// http: or other protocols default to port 80
-					port = 80
-					useHttps = false
-				}
-			}
-
 			this.client = new QdrantClient({
 				host: urlObj.hostname,
 				https: useHttps,
 				port: port,
-				prefix: urlObj.pathname === "/" ? undefined : urlObj.pathname.replace(/\/+$/, ""),
+				prefix,
 				apiKey,
 				headers: {
 					"User-Agent": "Roo-Code",
@@ -86,29 +80,32 @@ export class QdrantVectorStore implements IVectorStore {
 	/**
 	 * Parses and normalizes Qdrant server URLs to handle various input formats
 	 * @param url Raw URL input from user
+	 * @param apiKey Optional API key to determine secure defaults
 	 * @returns Properly formatted URL for QdrantClient
 	 */
-	private parseQdrantUrl(url: string | undefined): string {
+	private parseQdrantUrl(url: string | undefined, apiKey?: string): string {
 		// Handle undefined/null/empty cases
 		if (!url || url.trim() === "") {
 			return "http://localhost:6333"
 		}
 
 		const trimmedUrl = url.trim()
-
-		// Check if it starts with a protocol
-		if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://") && !trimmedUrl.includes("://")) {
-			// No protocol - treat as hostname
-			return this.parseHostname(trimmedUrl)
-		}
+		const hasProtocol =
+			trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://") || trimmedUrl.includes("://")
+		const candidateUrl = hasProtocol ? trimmedUrl : this.parseHostname(trimmedUrl, apiKey)
 
 		try {
-			// Attempt to parse as complete URL - return as-is, let constructor handle ports
-			const parsedUrl = new URL(trimmedUrl)
-			return trimmedUrl
+			const parsedUrl = new URL(candidateUrl)
+
+			// If an API key is provided over HTTP to a non-local host, warn but respect the explicit scheme.
+			if (apiKey && parsedUrl.protocol === "http:" && !this.isLocalHost(parsedUrl.hostname)) {
+				console.warn("[QdrantVectorStore] API key provided over HTTP; consider using HTTPS for remote hosts.")
+			}
+
+			return this.formatUrl(parsedUrl)
 		} catch {
 			// Failed to parse as URL - treat as hostname
-			return this.parseHostname(trimmedUrl)
+			return this.parseHostname(trimmedUrl, apiKey)
 		}
 	}
 
@@ -117,14 +114,63 @@ export class QdrantVectorStore implements IVectorStore {
 	 * @param hostname Raw hostname input
 	 * @returns Properly formatted URL with http:// prefix
 	 */
-	private parseHostname(hostname: string): string {
-		if (hostname.includes(":")) {
-			// Has port - add http:// prefix if missing
-			return hostname.startsWith("http") ? hostname : `http://${hostname}`
-		} else {
-			// No port - add http:// prefix without port (let constructor handle port assignment)
-			return `http://${hostname}`
+	private parseHostname(hostname: string, apiKey?: string): string {
+		const shouldUseHttps = apiKey && !this.isLocalHost(hostname)
+		const protocol = shouldUseHttps ? "https" : "http"
+		// Preserve any provided port/path in the hostname string
+		return hostname.startsWith("http") ? hostname : `${protocol}://${hostname}`
+	}
+
+	/**
+	 * Determines if the hostname refers to a local or private address
+	 */
+	private isLocalHost(hostname: string): boolean {
+		const normalizedHost = hostname.toLowerCase()
+		return (
+			// Treat single-segment hostnames (no dots) as local/intranet
+			(!normalizedHost.includes(".") && !normalizedHost.includes(":")) ||
+			normalizedHost === "localhost" ||
+			normalizedHost === "0.0.0.0" ||
+			normalizedHost === "::1" ||
+			normalizedHost.startsWith("127.") ||
+			normalizedHost.startsWith("10.") ||
+			normalizedHost.startsWith("192.168.") ||
+			/^172\.(1[6-9]|2\d|3[0-1])\./.test(normalizedHost)
+		)
+	}
+
+	/**
+	 * Selects a sensible default port based on protocol and whether an API key is used
+	 */
+	private getDefaultPort(useHttps: boolean, apiKey?: string, hostname?: string): number {
+		if (apiKey) {
+			// Qdrant defaults to 6333; prefer it when securing API-key based connections
+			return 6333
 		}
+
+		if (hostname && this.isLocalHost(hostname)) {
+			return 6333
+		}
+
+		return useHttps ? 443 : 80
+	}
+
+	/**
+	 * Returns true if the provided port is the default for the scheme
+	 */
+	private isDefaultPort(port: number, useHttps: boolean): boolean {
+		return (useHttps && port === 443) || (!useHttps && port === 80)
+	}
+
+	/**
+	 * Formats a URL without forcing trailing slashes and with an optional explicit port
+	 */
+	private formatUrl(url: URL, port?: number, includePort = false, preserveRootTrailingSlash = false): string {
+		const hasRootPath = url.pathname === "/"
+		const pathname = hasRootPath && preserveRootTrailingSlash ? "/" : hasRootPath ? "" : url.pathname
+		const portSegment =
+			includePort && port !== undefined ? `:${port}` : url.port ? `:${url.port}` : ""
+		return `${url.protocol}//${url.hostname}${portSegment}${pathname}${url.search}${url.hash}`
 	}
 
 	private async getCollectionInfo(): Promise<Schemas["CollectionInfo"] | null> {

@@ -269,18 +269,18 @@ describe("QdrantVectorStore", () => {
 		})
 
 		describe("IP address handling", () => {
-			it("should convert IP address to http with port 80", () => {
+			it("should convert IP address to http with default Qdrant port", () => {
 				const vectorStore = new QdrantVectorStore(mockWorkspacePath, "192.168.1.100", mockVectorSize)
 				expect(QdrantClient).toHaveBeenLastCalledWith({
 					host: "192.168.1.100",
 					https: false,
-					port: 80,
+					port: 6333,
 					apiKey: undefined,
 					headers: {
 						"User-Agent": "Roo-Code",
 					},
 				})
-				expect((vectorStore as any).qdrantUrl).toBe("http://192.168.1.100")
+				expect((vectorStore as any).qdrantUrl).toBe("http://192.168.1.100:6333")
 			})
 
 			it("should handle IP:port format with explicit port", () => {
@@ -343,18 +343,69 @@ describe("QdrantVectorStore", () => {
 		})
 
 		describe("Invalid URL fallback", () => {
-			it("should treat invalid URLs as hostnames with port 80", () => {
+			it("should treat invalid URLs as hostnames with default Qdrant port", () => {
 				const vectorStore = new QdrantVectorStore(mockWorkspacePath, "invalid-url-format", mockVectorSize)
 				expect(QdrantClient).toHaveBeenLastCalledWith({
 					host: "invalid-url-format",
 					https: false,
-					port: 80,
+					port: 6333,
 					apiKey: undefined,
 					headers: {
 						"User-Agent": "Roo-Code",
 					},
 				})
-				expect((vectorStore as any).qdrantUrl).toBe("http://invalid-url-format")
+				expect((vectorStore as any).qdrantUrl).toBe("http://invalid-url-format:6333")
+			})
+		})
+
+		describe("API key security defaults", () => {
+			it("should respect explicit http with API key but warn", () => {
+				const vectorStore = new QdrantVectorStore(
+					mockWorkspacePath,
+					"http://qdrant.example.com",
+					mockVectorSize,
+					mockApiKey,
+				)
+				expect(QdrantClient).toHaveBeenLastCalledWith({
+					host: "qdrant.example.com",
+					https: false,
+					port: 6333,
+					prefix: undefined, // No prefix for root path
+					apiKey: mockApiKey,
+					headers: {
+						"User-Agent": "Roo-Code",
+					},
+				})
+				expect((vectorStore as any).qdrantUrl).toBe("http://qdrant.example.com:6333")
+			})
+
+			it("should default to https when API key is provided and protocol is missing", () => {
+				const vectorStore = new QdrantVectorStore(mockWorkspacePath, "qdrant.example.com", mockVectorSize, mockApiKey)
+				expect(QdrantClient).toHaveBeenLastCalledWith({
+					host: "qdrant.example.com",
+					https: true,
+					port: 6333,
+					apiKey: mockApiKey,
+					headers: {
+						"User-Agent": "Roo-Code",
+					},
+				})
+				expect((vectorStore as any).qdrantUrl).toBe("https://qdrant.example.com:6333")
+			})
+
+			it("should keep http for localhost even when an API key is provided", () => {
+				const vectorStore = new QdrantVectorStore(mockWorkspacePath, "http://localhost", mockVectorSize, mockApiKey)
+				expect(QdrantClient).toHaveBeenLastCalledWith({
+					host: "localhost",
+					https: false,
+					port: 6333,
+					prefix: undefined,
+					apiKey: mockApiKey,
+					headers: {
+						"User-Agent": "Roo-Code",
+					},
+				})
+				expect((vectorStore as any).qdrantUrl).toBe("http://localhost:6333")
 			})
 		})
 	})

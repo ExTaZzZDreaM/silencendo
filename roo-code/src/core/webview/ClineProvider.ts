@@ -2368,6 +2368,13 @@ export class ClineProvider
 
 	// @deprecated - Use `ContextProxy#setValue` instead.
 	private async updateGlobalState<K extends keyof GlobalState>(key: K, value: GlobalState[K]) {
+		if (key === "listApiConfigMeta" && Array.isArray(value)) {
+			// Strip all non-Ollama profiles from the UI/state to force local-only usage.
+			const filtered = value.filter((entry: any) => entry?.apiProvider === "ollama") as GlobalState[K]
+			await this.contextProxy.setValue(key, filtered)
+			return
+		}
+
 		await this.contextProxy.setValue(key, value)
 	}
 

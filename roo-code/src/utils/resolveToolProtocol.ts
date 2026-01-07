@@ -14,22 +14,18 @@ type ApiMessageForDetection = Anthropic.MessageParam & {
 /**
  * Resolve the effective tool protocol.
  *
- * **Deprecation Note (XML Protocol):**
- * XML tool protocol has been deprecated. All models now use Native tool calling.
- * User/profile preferences (`providerSettings.toolProtocol`) and model defaults
- * (`modelInfo.defaultToolProtocol`) are ignored.
- *
  * Precedence:
  * 1. Locked Protocol (task-level lock for resumed tasks - highest priority)
- * 2. Native (always, for all new tasks)
+ * 2. User preference (settings.toolProtocol), if provided
+ * 3. Native (default for new tasks)
  *
- * @param _providerSettings - The provider settings (toolProtocol field is ignored)
+ * @param providerSettings - The provider settings (toolProtocol is respected)
  * @param _modelInfo - Unused, kept for API compatibility
  * @param lockedProtocol - Optional task-locked protocol that takes absolute precedence
  * @returns The resolved tool protocol (either "xml" or "native")
  */
 export function resolveToolProtocol(
-	_providerSettings: ProviderSettings,
+	providerSettings: ProviderSettings,
 	_modelInfo?: unknown,
 	lockedProtocol?: ToolProtocol,
 ): ToolProtocol {
@@ -39,9 +35,17 @@ export function resolveToolProtocol(
 		return lockedProtocol
 	}
 
-	// 2. Always return Native protocol for new tasks
-	// All models now support native tools; XML is deprecated
-	return TOOL_PROTOCOL.NATIVE
+	// 2. Respect user preference when set (allows forcing XML for models that
+	//    struggle with native tool calling, e.g., some local/Ollama models).
+	if (providerSettings?.toolProtocol === TOOL_PROTOCOL.XML) {
+		return TOOL_PROTOCOL.XML
+	}
+	if (providerSettings?.toolProtocol === TOOL_PROTOCOL.NATIVE) {
+		return TOOL_PROTOCOL.NATIVE
+	}
+
+	// 3. Default to XML protocol for new tasks (safer for local/Ollama models that ignore native calls)
+	return TOOL_PROTOCOL.XML
 }
 
 /**
